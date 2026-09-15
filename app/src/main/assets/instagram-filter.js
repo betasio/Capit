@@ -78,7 +78,7 @@
     scheduled = true; requestAnimationFrame(apply);
   }
   // Avoid observing attributes changed by our own filtering.
-  new MutationObserver(schedule).observe(document, { subtree:true, childList:true, characterData:true });
+  new MutationObserver(schedule).observe(document, { subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:['href'] });
   document.addEventListener('click', event => {
     const a = event.target.closest?.('a[href]');
     if (a && classify(a.href) === 'blocked') {
