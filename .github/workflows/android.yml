@@ -89,6 +89,9 @@ jobs:
             sleep 3
             adb shell pidof app.capit
             adb exec-out screencap -p > previews/home-compact.png
+            adb shell input swipe 480 1400 480 600 350
+            sleep 1
+            adb exec-out screencap -p > previews/home-compact-scrolled.png
       - uses: actions/upload-artifact@v4
         with:
           name: Capit-design-previews

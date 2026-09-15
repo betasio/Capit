@@ -46,15 +46,16 @@ final class CapitUi {
     static void label(LinearLayout parent, String text, int size, int color, boolean bold) { parent.addView(text(parent.getContext(), text, size, color, bold)); }
 
     static View home(Context c, Runnable messages, Runnable stories, Runnable following, Runnable about) {
+        boolean compact = c.getResources().getConfiguration().screenWidthDp <= 360;
         ScrollView scroll = new ScrollView(c); scroll.setFillViewport(true); scroll.setClipToPadding(false);
         LinearLayout page = column(c); page.setPadding(dp(c,24), dp(c,16), dp(c,24), dp(c,24)); scroll.addView(page);
         TextView eyebrow = text(c, "YOUR SPACE TO CONNECT", 10, MUTED, true); eyebrow.setLetterSpacing(.16f); page.addView(eyebrow);
         space(page, 14);
-        TextView headline = text(c, "Keep the people.\nSkip the scroll.", 36, INK, true);
+        TextView headline = text(c, "Keep the people.\nSkip the scroll.", compact ? 30 : 36, INK, true);
         headline.setLetterSpacing(-.045f); headline.setLineSpacing(dp(c,2), 1f); page.addView(headline);
         space(page,10);
         TextView subtitle = text(c, "A little less noise. More of what matters.", 14, MUTED, false); subtitle.setLineSpacing(dp(c,4),1); page.addView(subtitle);
-        page.addView(new ConnectionArt(c), new LinearLayout.LayoutParams(-1,dp(c,138)));
+        page.addView(new ConnectionArt(c), new LinearLayout.LayoutParams(-1,dp(c,compact ? 88 : 138)));
 
         LinearLayout messageCard = column(c); messageCard.setPadding(dp(c,20),dp(c,19),dp(c,20),dp(c,19));
         clickable(messageCard, INK, 24, messages);
