@@ -3,6 +3,15 @@
 Free Instagram-only prototype for keeping connection while reducing scrolling.
 Use Instagram **inside Capit**; this does not modify or block the installed Instagram app.
 
+## Visual refresh · 0.2
+
+- Native home screen in ivory, forest green, mint and lavender, with vector conversation artwork.
+- Original C/conversation logo with adaptive and Android 13 themed launcher icons.
+- Bottom navigation and selected states, larger touch targets, scalable text and a scrollable home layout.
+- Short 220 ms fade/slide entrances, ripple feedback, and animated loading progress.
+- **More → Reduce motion** disables entrance/progress motion; Android’s disabled animation setting is also respected. No looping decorative animation.
+- The Instagram filter script is unchanged from the version tested on the owner’s phone.
+
 ## Current implementation
 
 - Native Android browser with Instagram login, Messages, Stories/home, profile lookup and an experimental Following shortcut.

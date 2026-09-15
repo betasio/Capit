@@ -6,7 +6,13 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Build;
+import android.view.WindowInsetsController;
 import android.view.View;
+import android.view.Gravity;
+import android.content.res.ColorStateList;
+import android.view.inputmethod.InputMethodManager;
+import static app.capit.CapitUi.*;
 import android.webkit.*;
 import android.widget.*;
 import androidx.webkit.WebViewCompat;
@@ -26,35 +32,58 @@ public class MainActivity extends Activity {
     private ProgressBar progress;
     private String filter;
     private ValueCallback<Uri[]> upload;
-    private final int green = Color.rgb(33, 107, 82);
+    private LinearLayout browser;
+    private View dashboard;
+    private FrameLayout content;
+    private TextView section;
+    private final LinearLayout[] tabs = new LinearLayout[4];
+    private final CapitUi.Icon[] tabIcons = new CapitUi.Icon[4];
+    private final TextView[] tabLabels = new TextView[4];
+    private boolean filtersReady;
+    private boolean atHome = true;
+    private String filterError = "Filters are still starting. Try again in a moment.";
+    private int dp(float value) { return CapitUi.dp(this, value); }
+    private boolean reducedMotion() { return getPreferences(0).getBoolean("reduceMotion", false); }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.rgb(245, 244, 238));
+        LinearLayout root = column(this);
+        root.setBackgroundColor(PAPER);
         root.setOnApplyWindowInsetsListener((view, insets) -> {
             view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(),
                     insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
             return insets;
         });
         setContentView(root);
-        TextView brand = new TextView(this);
-        brand.setText("capit  /  Instagram"); brand.setTextSize(24); brand.setTextColor(green);
-        brand.setPadding(20, 14, 20, 6); root.addView(brand);
-        status = new TextView(this);
-        status.setText("Prototype · Reels & Explore filters enabled");
-        status.setTextSize(12); status.setPadding(20, 0, 20, 8); root.addView(status);
-        LinearLayout nav = new LinearLayout(this);
-        root.addView(nav);
-        button(nav, "Stories", () -> navigate(HOME));
-        button(nav, "Messages", () -> navigate(HOME + "direct/inbox/"));
-        button(nav, "Following", this::following);
-        button(nav, "More", this::menu);
-        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        root.addView(progress, new LinearLayout.LayoutParams(-1, 5));
-        web = new WebView(this);
-        root.addView(web, new LinearLayout.LayoutParams(-1, 0, 1));
+        LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(20), dp(10), dp(16), dp(10));
+        ImageView logo = new ImageView(this); logo.setImageResource(R.drawable.ic_capit);
+        logo.setPadding(dp(4),dp(4),dp(4),dp(4));logo.setContentDescription("Capit home");
+        clickable(logo,Color.TRANSPARENT,16,this::showHome);header.addView(logo,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        LinearLayout brand = column(this);LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(0,-2,1);bp.setMarginStart(dp(8));header.addView(brand,bp);
+        TextView wordmark=text(this,"capit",26,INK,true);wordmark.setLetterSpacing(-.06f);brand.addView(wordmark);
+        section=text(this,"A calmer Instagram",11,MUTED,false);brand.addView(section);
+        CapitUi.Icon more=new CapitUi.Icon(this,"more",INK);more.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        more.setPadding(dp(12),dp(12),dp(12),dp(12));more.setContentDescription("More options");
+        clickable(more,Color.WHITE,16,this::menu);header.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        root.addView(header);
+        content=new FrameLayout(this);root.addView(content,new LinearLayout.LayoutParams(-1,0,1));
+        browser=column(this);browser.setBackgroundColor(Color.WHITE);
+        status=text(this,"Distraction filters enabled",11,MUTED,false);status.setPadding(dp(20),dp(8),dp(20),dp(8));status.setBackgroundColor(PAPER);status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);browser.addView(status);
+        progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
+        progress.setProgressTintList(ColorStateList.valueOf(INK));progress.setProgressBackgroundTintList(ColorStateList.valueOf(MINT));
+        progress.setVisibility(View.INVISIBLE);browser.addView(progress,new LinearLayout.LayoutParams(-1,dp(2)));
+        web=new WebView(this);browser.addView(web,new LinearLayout.LayoutParams(-1,0,1));
+        content.addView(browser,new FrameLayout.LayoutParams(-1,-1));
+        dashboard=CapitUi.home(this,()->navigate(HOME+"direct/inbox/"),()->navigate(HOME),this::following,this::about);
+        content.addView(dashboard,new FrameLayout.LayoutParams(-1,-1));
+        View divider=new View(this);divider.setBackgroundColor(LINE);root.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));
+        LinearLayout nav=new LinearLayout(this);nav.setPadding(dp(12),dp(6),dp(12),dp(6));root.addView(nav);
+        addTab(nav,0,"Home","home",this::showHome);
+        addTab(nav,1,"Messages","messages",()->navigate(HOME+"direct/inbox/"));
+        addTab(nav,2,"Stories","stories",()->navigate(HOME));
+        addTab(nav,3,"Following","following",this::following);
+        showHome();
         WebSettings settings = web.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -75,14 +104,15 @@ public class MainActivity extends Activity {
                 filter = output.toString("UTF-8");
             }
         } catch (Exception e) {
-            status.setText("Could not load filters. Please reinstall Capit."); return;
+            filterError="Could not load filters. Please reinstall Capit."; return;
         }
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            status.setText("Update Android System WebView or Chrome, then reopen Capit.");
+            filterError="Update Android System WebView or Chrome, then reopen Capit.";
             return; // Do not show an unfiltered Instagram page on unsupported engines.
         }
         WebViewCompat.addDocumentStartJavaScript(web, filter,
                 new HashSet<>(Arrays.asList("https://www.instagram.com", "https://instagram.com", "https://*.instagram.com")));
+        filtersReady = true;
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 if (!request.isForMainFrame()) return !instagram(request.getUrl());
@@ -112,7 +142,7 @@ public class MainActivity extends Activity {
         });
         web.setWebChromeClient(new WebChromeClient() {
             @Override public void onProgressChanged(WebView view, int value) {
-                progress.setProgress(value); progress.setVisibility(value == 100 ? View.GONE : View.VISIBLE);
+                progress.setProgress(value, !reducedMotion()); progress.setVisibility(value == 100 ? View.INVISIBLE : View.VISIBLE);
             }
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (upload != null) upload.onReceiveValue(null);
@@ -130,18 +160,41 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> status.setText("Camera, microphone and calls are not supported in this prototype."));
             }
         });
-        if (getPreferences(0).getBoolean("onboarded", false)) navigate(HOME + "direct/inbox/");
-        else new AlertDialog.Builder(this).setTitle("Welcome to Capit")
-                .setMessage("Use Instagram with fewer distractions. Sign in on Instagram’s own website. Capit does not collect passwords or send your messages to a separate server.\n\nThis is an early prototype. Stories, messages and uploads need testing. Following is experimental; calls and notifications are not supported.\n\nFilters only apply inside Capit.")
-                .setCancelable(false).setPositiveButton("Open Instagram", (d, w) -> {
-                    getPreferences(0).edit().putBoolean("onboarded", true).apply();
-                    navigate(HOME + "direct/inbox/");
-                }).show();
     }
-    private void button(LinearLayout nav, String title, Runnable action) {
-        Button b = new Button(this); b.setText(title); b.setTextSize(11); b.setAllCaps(false);
-        b.setMinWidth(0); b.setMinimumWidth(0); b.setPadding(0, 0, 0, 0);
-        nav.addView(b, new LinearLayout.LayoutParams(0, -2, 1)); b.setOnClickListener(v -> action.run());
+    private void addTab(LinearLayout nav,int index,String title,String icon,Runnable action) {
+        LinearLayout tab=column(this);tab.setGravity(Gravity.CENTER);tab.setPadding(dp(2),dp(8),dp(2),dp(8));tab.setMinimumHeight(dp(62));
+        tabs[index]=tab;tabIcons[index]=new CapitUi.Icon(this,icon,MUTED);
+        tab.addView(tabIcons[index],new LinearLayout.LayoutParams(dp(23),dp(23)));space(tab,5);
+        tabLabels[index]=text(this,title,10,MUTED,true);tabLabels[index].setGravity(Gravity.CENTER);tab.addView(tabLabels[index]);
+        tab.setContentDescription(title);clickable(tab,Color.TRANSPARENT,18,action);
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.setMargins(dp(2),0,dp(2),0);nav.addView(tab,lp);
+    }
+    private void selectTab(int index) {
+        for(int i=0;i<tabs.length;i++) {
+            if(tabs[i]==null) continue;
+            tabs[i].setSelected(i==index);
+            // Update the content layer directly: RippleDrawable's generated layer has no stable ID.
+            android.graphics.drawable.RippleDrawable bg=(android.graphics.drawable.RippleDrawable)tabs[i].getBackground();
+            if(bg.getNumberOfLayers()>0 && bg.getDrawable(0) instanceof android.graphics.drawable.GradientDrawable)
+                ((android.graphics.drawable.GradientDrawable)bg.getDrawable(0)).setColor(i==index?MINT:Color.TRANSPARENT);
+            tabIcons[i].tint(i==index?INK:MUTED);tabLabels[i].setTextColor(i==index?INK:MUTED);
+        }
+    }
+    private void showHome() {
+        if (dashboard==null) return;
+        if(web!=null) {
+            if(filtersReady && instagram(Uri.parse(web.getUrl()==null?HOME:web.getUrl())))
+                web.evaluateJavascript("document.querySelectorAll('video,audio').forEach(m=>m.pause())",null);
+            web.onPause();
+        }
+        ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(content.getWindowToken(),0);
+        atHome=true;browser.setVisibility(View.GONE);dashboard.setVisibility(View.VISIBLE);section.setText("A calmer Instagram");selectTab(0);
+        CapitUi.enter(dashboard,reducedMotion());
+    }
+    private void showBrowser(String url) {
+        atHome=false;dashboard.animate().cancel();dashboard.setVisibility(View.GONE);browser.setVisibility(View.VISIBLE);web.onResume();
+        int index=url.contains("variant=following")?3:url.contains("/direct/")?1:url.equals(HOME)?2:-1;
+        selectTab(index);section.setText(index==3?"Following":index==1?"Messages":index==2?"Stories":"Instagram");
     }
     private static boolean instagram(Uri uri) {
         String host = uri.getHost();
@@ -154,8 +207,16 @@ public class MainActivity extends Activity {
         return path != null && path.toLowerCase(java.util.Locale.ROOT).matches("^/(reel|reels|explore)(/.*)?$|^/[^/]+/reels(/.*)?$");
     }
     private void navigate(String url) {
-        status.setText(url.contains("variant=following") ? "Following · experimental, verify posts on your account"
-                : url.endsWith("instagram.com/") ? "Stories · home-feed posts hidden" : "Messages · distraction filters enabled");
+        if(!filtersReady) {new AlertDialog.Builder(this).setTitle("A quick update needed").setMessage(filterError).setPositiveButton("OK",null).show();return;}
+        if(!getPreferences(0).getBoolean("onboarded",false)) {
+            new AlertDialog.Builder(this).setTitle("Your Instagram, a little quieter")
+                .setMessage("Sign in on Instagram’s own website. Capit keeps your session on this phone and has no separate server for your messages or password. Filters apply only inside Capit.\n\nFollowing is experimental. Calls and notifications are not supported yet.")
+                .setPositiveButton("Continue",(d,w)->{getPreferences(0).edit().putBoolean("onboarded",true).apply();navigate(url);})
+                .setNegativeButton("Not now",null).show();return;
+        }
+        showBrowser(url);
+        status.setText(url.contains("variant=following") ? "Following · experimental"
+                : url.equals(HOME) ? "Stories · home-feed posts hidden" : "Reels & Explore filters enabled");
         web.loadUrl(url);
     }
     private void following() {
@@ -165,8 +226,9 @@ public class MainActivity extends Activity {
                 .setNegativeButton("Cancel", null).show();
     }
     private void menu() {
-        new AlertDialog.Builder(this).setTitle("Capit prototype").setItems(new String[]{"Reload", "Open a profile", "About & limitations", "Clear Instagram session"}, (d, item) -> {
-            if (item == 0) web.reload();
+        new AlertDialog.Builder(this).setTitle("Make yourself at home").setItems(new String[]{"Reload Instagram", "Open a profile", "About Capit", "Clear Instagram session", reducedMotion()?"Reduce motion: on":"Reduce motion: off"}, (d, item) -> {
+            if (item == 0) { if(atHome) navigate(HOME+"direct/inbox/"); else web.reload(); }
+            if (item == 4) { getPreferences(0).edit().putBoolean("reduceMotion",!reducedMotion()).apply();if(atHome) {dashboard.animate().cancel();dashboard.setAlpha(1);dashboard.setTranslationY(0);} Toast.makeText(this,reducedMotion()?"Reduced motion enabled":"Subtle animations enabled",Toast.LENGTH_SHORT).show(); }
             if (item == 1) {
                 EditText name = new EditText(this); name.setHint("Instagram username"); name.setSingleLine(true);
                 new AlertDialog.Builder(this).setTitle("Open a profile").setView(name)
@@ -176,9 +238,7 @@ public class MainActivity extends Activity {
                             else Toast.makeText(this, "Enter a valid username", Toast.LENGTH_SHORT).show();
                         }).setNegativeButton("Cancel", null).show();
             }
-            if (item == 2) new AlertDialog.Builder(this).setTitle("Less scrolling. More connection.")
-                    .setMessage("Capit 0.1 · Free prototype\n\nReels and Explore routes are blocked; matching links and cards are hidden. The standard home feed is hidden to leave room for Stories. Following is experimental.\n\nInstagram can change its pages and break filters. Calls, camera capture, push notifications and Facebook sign-in are not supported. No analytics, advertising or Capit backend. Instagram still processes data under its own policies.")
-                    .setPositiveButton("Done", null).show();
+            if (item == 2) about();
             if (item == 3) new AlertDialog.Builder(this).setTitle("Clear your session?")
                     .setMessage("This signs you out of Instagram inside Capit and clears its local website storage.")
                     .setPositiveButton("Clear", (dialog, which) -> {
@@ -190,6 +250,11 @@ public class MainActivity extends Activity {
                     }).setNegativeButton("Cancel", null).show();
         }).show();
     }
+    private void about() {
+        new AlertDialog.Builder(this).setTitle("Less scrolling. More connection.")
+            .setMessage("Capit 0.2 · Free to use\n\nA calmer way to use Instagram. Reels and Explore filters run locally inside Capit. Following is experimental, and Instagram updates may affect filtering.\n\nNo ads, analytics or Capit server. Instagram still processes your account activity. Calls, notifications, camera capture and Facebook sign-in are not supported yet.")
+            .setPositiveButton("Sounds good",null).show();
+    }
     private void external(Uri uri) {
         if (!"https".equalsIgnoreCase(uri.getScheme())) { status.setText("This link type is not supported in Capit."); return; }
         new AlertDialog.Builder(this).setTitle("Leave Capit?")
@@ -198,6 +263,20 @@ public class MainActivity extends Activity {
                     try { startActivity(new Intent(Intent.ACTION_VIEW, uri)); }
                     catch (Exception e) { status.setText("No browser is available for this link."); }
                 }).setNegativeButton("Stay here", null).show();
+    }
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (!hasFocus) return;
+        // Explicitly restore dark system icons after the launch screen/WebView initialization.
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) controller.setSystemBarsAppearance(
+                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
+        } else {
+            View decor = getWindow().getDecorView();
+            decor.setSystemUiVisibility(decor.getSystemUiVisibility() | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        }
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
@@ -211,11 +290,12 @@ public class MainActivity extends Activity {
         }
         upload.onReceiveValue(files); upload = null;
     }
-    @Override public void onBackPressed() { if (web.canGoBack()) web.goBack(); else super.onBackPressed(); }
+    @Override public void onBackPressed() { if(atHome) super.onBackPressed(); else if(web.canGoBack()) web.goBack(); else showHome(); }
     @Override protected void onPause() { if (web != null) web.onPause(); super.onPause(); }
-    @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); }
+    @Override protected void onResume() { super.onResume(); if (web != null && !atHome) web.onResume(); }
     @Override protected void onDestroy() {
         if (upload != null) { upload.onReceiveValue(null); upload = null; }
+        if(dashboard!=null) dashboard.animate().cancel();
         if (web != null) { web.stopLoading(); web.destroy(); }
         super.onDestroy();
     }
